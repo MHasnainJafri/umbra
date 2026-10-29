@@ -156,7 +156,10 @@ while IFS= read -r -d '' bin; do
     if [[ -n "$hits" ]]; then
       echo "FAIL (yadif, hqdn3d or libzvbi code in libvlc): $bin"; sed 's/^/    /' <<<"$hits"; status=1
     fi
-    if ! awk '{print $NF}' <<<"$allsyms" | grep -Eq -- "$OS_AAC_DECODER"; then
+    # Not "awk | grep -q": grep stops at the first match, awk then dies of SIGPIPE on a real
+    # framework's symbol list, and pipefail turned that into a false "missing".
+    names="$(awk '{print $NF}' <<<"$allsyms")"
+    if ! grep -Eq -- "$OS_AAC_DECODER" <<<"$names"; then
       echo "FAIL (no AudioToolbox AAC decoder, ff_aac_at_decoder: AAC would not play in libvlc): $bin"; status=1
     fi
   fi
