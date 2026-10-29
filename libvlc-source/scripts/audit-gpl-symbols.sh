@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Release gate: fails if an app bundle (or a VLCKit/MobileVLCKit xcframework) links GPL-only
 # code or software decoders for patent-pool codecs (H.264/HEVC must decode through VideoToolbox
-# only), or links libvlc statically into an app or extension executable.
+# only; AAC, DTS and VC-1/WMV9 have no software decoder at all, docs/COMPLIANCE.md §2), or links
+# libvlc statically into an app or extension executable.
 #
 #   scripts/audit-gpl-symbols.sh path/to/Umbra.app              # Mac app
 #   scripts/audit-gpl-symbols.sh path/to/UmbraMobile.app        # iPhone/iPad app (device or Simulator)
@@ -22,7 +23,12 @@
 #   * no "Yadif" mode label: Umbra's libVLC is built with scripts/vlc-patches/0002, which takes
 #     yadif (yadif.h, yadif_template.h: GPL) out of the deinterlace module, and its labels out of
 #     the module and the core; a label means an unpatched module;
-#   * when the binary still has its local symbols (VLCKit's do): no yadif, hqdn3d or libzvbi code.
+#   * when the binary still has its local symbols (VLCKit's do): no yadif, hqdn3d or libzvbi code;
+#   * FFmpeg's aac_at decoder is there: with the software AAC decoders removed, it is how libVLC
+#     plays AAC (through Apple's AudioToolbox). Without it AAC would be silent.
+# When every check passes on a binary that carries libvlc, the last line says
+# "no-royalty decoder audit passed"; scripts/build-mac.sh requires it in the framework's report,
+# so a framework built before the AAC/DTS/VC-1 decoders were removed is not embedded.
 # scripts/build-vlckit.sh also checks every source file compiled into the libVLC it links
 # (scripts/audit-libvlc-sources.py), which this check cannot see.
 set -euo pipefail
@@ -37,7 +43,9 @@ if [[ "${1:-}" == --self-test ]]; then
     xcrun clang -dynamiclib -O0 -o "$t/$1/Fake.framework/Fake" "$t/$1/x.c" \
       || { echo "self-test: clang failed" >&2; exit 2; }
   }
-  base='const char *libvlc_new(void){return "Licensed under the terms of the GNU Lesser General Public License, version 2.1 or later.";} const char *const umbra_lgpl[] = {"Deinterlacing video filter", "Linear", "libavcodec license: LGPL version 2.1 or later"};'
+  # A clean libvlc: LGPL strings, the AudioToolbox AAC decoder and the decoders that stay
+  # (AC-3, MPEG-4 Part 2, WMV8).
+  base='const char *libvlc_new(void){return "Licensed under the terms of the GNU Lesser General Public License, version 2.1 or later.";} const char *const umbra_lgpl[] = {"Deinterlacing video filter", "Linear", "libavcodec license: LGPL version 2.1 or later"}; int ff_ac3_decoder; int ff_mpeg4_decoder; int ff_wmv2_decoder; int ff_aac_at_decoder; int ff_aac_at_encoder; int ff_ac3_encoder;'
   fw clean "$base"
   fw gpllicence "$base const char *const s1[] = {\"Licensed under the terms of the GNU General Public License, version 2 or later.\"};"
   fw gplffmpeg "$base const char *const s1[] = {\"libavcodec license: GPL version 2 or later\"};"
@@ -48,9 +56,26 @@ if [[ "${1:-}" == --self-test ]]; then
   fw yadifcode "$base void yadif_filter_line_c(void){}"
   fw zvbicode "$base int vbi_decode_vps_pdc(void){return 0;}"
   fw h264 "$base int ff_h264_decoder;"
+  fw aac "$base int ff_aac_decoder;"
+  fw aacfixed "$base int ff_aac_fixed_decoder;"
+  fw aaclatm "$base int ff_aac_latm_decoder;"
+  fw dca "$base int ff_dca_decoder;"
+  fw vc1 "$base int ff_vc1_decoder;"
+  fw vc1image "$base int ff_vc1image_decoder;"
+  fw wmv3 "$base int ff_wmv3_decoder;"
+  fw wmv3image "$base int ff_wmv3image_decoder;"
+  fw mss2 "$base int ff_mss2_decoder;"
+  fw noaacat "$(printf '%s' "$base" | sed 's/ int ff_aac_at_decoder;//')"
+  fw aacenc "$base int ff_aac_encoder;"
+  fw dcaenc "$base int ff_dca_encoder;"
+  fw truehdenc "$base int ff_truehd_encoder;"
+  fw mlpenc "$base int ff_mlp_encoder;"
   self="${BASH_SOURCE[0]}" fails=0
   bash "$self" "$t/clean" >/dev/null || { echo "self-test: the clean framework failed"; bash "$self" "$t/clean" || true; fails=1; }
-  for c in gpllicence gplffmpeg hqdn3d rotate teletext yadiflabel yadifcode zvbicode h264; do
+  bash "$self" "$t/clean" | grep -qx 'no-royalty decoder audit passed' \
+    || { echo "self-test: the clean framework's audit did not report the no-royalty decoder audit"; fails=1; }
+  for c in gpllicence gplffmpeg hqdn3d rotate teletext yadiflabel yadifcode zvbicode h264 \
+           aac aacfixed aaclatm dca vc1 vc1image wmv3 wmv3image mss2 noaacat aacenc dcaenc truehdenc mlpenc; do
     if bash "$self" "$t/$c" >/dev/null 2>&1; then echo "self-test: $c passed the audit"; fails=1; fi
   done
   [[ $fails -eq 0 ]] && echo "GPL/patent audit self-test passed"
@@ -64,8 +89,16 @@ APP="${1:?usage: $0 path/to/App.app | path/to/Framework.xcframework | --self-tes
 # start of a symbol name (nm prints "addr T _name"), so FFmpeg's own LGPL decoders with similar
 # names (ff_dca_*, avpriv_dca_* for DTS, ff_mpeg2_*) are not mistaken for libdca or libmpeg2.
 GPL_PATTERNS='(^|[[:space:]])_?(x264_|x265_|a52_|dvdcss_|faad|mpeg2_|xvid_|dca_|libpostproc|postproc_|vidstab|rubberband|frei0r)'
-# Software decoders for encumbered video codecs (patents: route via VideoToolbox).
-PATENT_PATTERNS='(^|_)ff_(h264|hevc)_decoder$|(^|_)ff_(h264|hevc)_(cuvid|qsv)_decoder$|(^|_)ff_(ac4|truehd|mlp)_decoder$'
+# Software decoders for codecs whose patent pools still license (docs/COMPLIANCE.md §2): H.264/HEVC
+# (VideoToolbox only), AC-4/TrueHD/MLP, AAC (AudioToolbox only, through aac_at), DTS (dca: the HD
+# extensions cannot be split off), VC-1/WMV9 (vc1, vc1image, wmv3, wmv3image, and mss2, which
+# decodes through vc1), and the hardware wrappers that would bring the same decoders back; and
+# the software encoders of those pools (aac, dca, truehd, mlp: the licences cover encoders too,
+# and Umbra never encodes through libVLC).
+# ff_aac_at_decoder / ff_aac_at_encoder (AudioToolbox) do not match: "aac_at" is not "aac".
+PATENT_PATTERNS='(^|_)ff_(h264|hevc)_decoder$|(^|_)ff_(h264|hevc|vc1|wmv3)_(cuvid|qsv|crystalhd|mmal|v4l2m2m)_decoder$|(^|_)ff_(ac4|truehd|mlp)_decoder$|(^|_)ff_(aac|aac_fixed|aac_latm|libfdk_aac|dca|vc1|vc1image|wmv3|wmv3image|mss2)_decoder$|(^|_)ff_(aac|libfdk_aac|dca|truehd|mlp)_encoder$'
+# The OS decoder that plays AAC in libVLC (see the top). Required in every binary with libvlc.
+OS_AAC_DECODER='(^|_)ff_aac_at_decoder$'
 # libvlc / VLCKit code: allowed only inside a dynamic framework, never in an executable.
 LIBVLC_DEFINED='[[:space:]][TtSsDd][[:space:]](_libvlc_new|_OBJC_CLASS_\$_VLCMediaPlayer)$'
 # In the libvlc binary, whole strings as `strings` prints them: the licence of a GPL VLC module,
@@ -123,6 +156,9 @@ while IFS= read -r -d '' bin; do
     if [[ -n "$hits" ]]; then
       echo "FAIL (yadif, hqdn3d or libzvbi code in libvlc): $bin"; sed 's/^/    /' <<<"$hits"; status=1
     fi
+    if ! awk '{print $NF}' <<<"$allsyms" | grep -Eq -- "$OS_AAC_DECODER"; then
+      echo "FAIL (no AudioToolbox AAC decoder, ff_aac_at_decoder: AAC would not play in libvlc): $bin"; status=1
+    fi
   fi
   # Static archives of LGPL code would make the app a derivative work: VLCKit must be dynamic.
   # Executables are everything outside a framework that is not a dylib: Contents/MacOS/* on the
@@ -146,5 +182,8 @@ while IFS= read -r -d '' bin; do
 done < <(find "$APP" -type f \( -perm -u+x -o -name '*.dylib' -o -path '*.framework/*' \) -print0)
 
 if [[ $checked -eq 0 ]]; then echo "error: no Mach-O binaries found in $APP" >&2; exit 2; fi
-if [[ $status -eq 0 ]]; then echo "GPL/patent symbol audit passed for $APP ($checked binaries, $libvlc_bins with libvlc)"; fi
+if [[ $status -eq 0 ]]; then
+  echo "GPL/patent symbol audit passed for $APP ($checked binaries, $libvlc_bins with libvlc)"
+  if [[ $libvlc_bins -gt 0 ]]; then echo "no-royalty decoder audit passed"; fi
+fi
 exit $status

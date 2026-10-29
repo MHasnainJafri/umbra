@@ -1,0 +1,98 @@
+Umbra: libvlcjni without renderer discovery (RendererDiscoverer.java is GPL).
+
+libvlc/src/org/videolan/libvlc/RendererDiscoverer.java carries a GPL-2.0-or-later
+header (every other Java/Kotlin file of libvlcjni at 965e8648 is LGPL-2.1-or-later
+or has no header; the library is published as LGPL 2.1, libvlc/COPYING.LIB).
+Umbra never casts and never looks for renderers, so the class is left out of the
+AAR instead (docs/COMPLIANCE.md §1.4). scripts/build-libvlc-android.sh deletes
+RendererDiscoverer.java and its JNI side, libvlc/jni/libvlcjni-rendererdiscoverer.c
+(LGPL, used by nothing else), before anything is built; this patch removes what
+referred to them:
+  * JNI_OnLoad no longer looks up org/videolan/libvlc/RendererDiscoverer and its
+    Description (FindClass would fail without the class, and libvlcjni.so would
+    not load), nor their two static factory methods, and no longer frees them;
+  * libvlcjni-rendererdiscoverer.c is no longer compiled (Android.mk);
+  * the RendererDiscoverer field block goes from utils.h.
+RendererItem.java stays (LGPL by COPYING.LIB: MediaPlayer.setRenderer and
+util/DisplayManager use the type), but nothing can create one any more: its
+constructor is package-private and RendererDiscoverer was its only caller, so
+its native release method (which lived in the removed C file) is never reached.
+MediaPlayer.setRenderer(null) still works.
+
+diff --git a/libvlc/jni/Android.mk b/libvlc/jni/Android.mk
+index a165816..32e37be 100644
+--- a/libvlc/jni/Android.mk
++++ b/libvlc/jni/Android.mk
+@@ -51,7 +51,7 @@ LOCAL_MODULE    := libvlcjni
+ LOCAL_SRC_FILES := libvlcjni.c
+ LOCAL_SRC_FILES += libvlcjni-mediaplayer.c
+ LOCAL_SRC_FILES += libvlcjni-vlcobject.c
+-LOCAL_SRC_FILES += libvlcjni-media.c libvlcjni-medialist.c libvlcjni-mediadiscoverer.c libvlcjni-rendererdiscoverer.c
++LOCAL_SRC_FILES += libvlcjni-media.c libvlcjni-medialist.c libvlcjni-mediadiscoverer.c
+ LOCAL_SRC_FILES += libvlcjni-dialog.c
+ LOCAL_SRC_FILES += std_logger.c
+ LOCAL_C_INCLUDES := $(VLC_SRC_DIR)/include $(VLC_BUILD_DIR)/include
+diff --git a/libvlc/jni/libvlcjni.c b/libvlc/jni/libvlcjni.c
+index f7c74d3..c3654aa 100644
+--- a/libvlc/jni/libvlcjni.c
++++ b/libvlc/jni/libvlcjni.c
+@@ -189,10 +189,6 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved)
+               "org/videolan/libvlc/MediaDiscoverer", true);
+     GET_CLASS(fields.MediaDiscoverer.Description.clazz,
+               "org/videolan/libvlc/MediaDiscoverer$Description", true);
+-    GET_CLASS(fields.RendererDiscoverer.clazz,
+-              "org/videolan/libvlc/RendererDiscoverer", true);
+-    GET_CLASS(fields.RendererDiscoverer.Description.clazz,
+-              "org/videolan/libvlc/RendererDiscoverer$Description", true);
+     GET_CLASS(fields.Dialog.clazz,
+               "org/videolan/libvlc/Dialog", true);
+ 
+@@ -278,20 +274,6 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved)
+            "(Ljava/lang/String;Ljava/lang/String;I)"
+            "Lorg/videolan/libvlc/MediaDiscoverer$Description;");
+ 
+-    GET_ID(GetStaticMethodID,
+-           fields.RendererDiscoverer.createDescriptionFromNativeID,
+-           fields.RendererDiscoverer.clazz,
+-           "createDescriptionFromNative",
+-           "(Ljava/lang/String;Ljava/lang/String;)"
+-           "Lorg/videolan/libvlc/RendererDiscoverer$Description;");
+-
+-    GET_ID(GetStaticMethodID,
+-           fields.RendererDiscoverer.createItemFromNativeID,
+-           fields.RendererDiscoverer.clazz,
+-           "createItemFromNative",
+-           "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;IJ)"
+-           "Lorg/videolan/libvlc/RendererItem;");
+-
+     GET_ID(GetStaticMethodID,
+            fields.Dialog.displayErrorFromNativeID,
+            fields.Dialog.clazz,
+@@ -363,8 +345,6 @@ void JNI_OnUnload(JavaVM* vm, void* reserved)
+     (*env)->DeleteGlobalRef(env, fields.MediaPlayer.Equalizer.clazz);
+     (*env)->DeleteGlobalRef(env, fields.MediaDiscoverer.clazz);
+     (*env)->DeleteGlobalRef(env, fields.MediaDiscoverer.Description.clazz);
+-    (*env)->DeleteGlobalRef(env, fields.RendererDiscoverer.clazz);
+-    (*env)->DeleteGlobalRef(env, fields.RendererDiscoverer.Description.clazz);
+     (*env)->DeleteGlobalRef(env, fields.Dialog.clazz);
+ 
+     pthread_key_delete(jni_env_key);
+diff --git a/libvlc/jni/utils.h b/libvlc/jni/utils.h
+index a03840c..8316791 100644
+--- a/libvlc/jni/utils.h
++++ b/libvlc/jni/utils.h
+@@ -98,14 +98,6 @@ struct fields {
+         jclass clazz;
+         jmethodID createDescriptionFromNativeID;
+     } MediaDiscoverer;
+-    struct {
+-        struct {
+-            jclass clazz;
+-        } Description;
+-        jclass clazz;
+-        jmethodID createDescriptionFromNativeID;
+-        jmethodID createItemFromNativeID;
+-    } RendererDiscoverer;
+     struct {
+         jclass clazz;
+         jmethodID displayErrorFromNativeID;

@@ -3,7 +3,14 @@
 #   * no GPL contribs (VLCKit's contrib bootstrap always passes --disable-gpl, which drops
 #     a52/liba52, x264, x265, libdvdcss, postproc, faad, libmpeg2 ...)
 #   * libavcodec H.264 and HEVC software decoders removed (decode via VideoToolbox only)
-#   * AC-4 / TrueHD / MLP decoders removed; AC-3 and E-AC-3 kept (see docs/COMPLIANCE.md)
+#   * no software decoder for a codec whose patent pool still licenses (docs/COMPLIANCE.md §2,
+#     owner decision 2026-10-29: no royalties): AAC (aac, aac_fixed, aac_latm), DTS (dca: core
+#     and HD extensions are one decoder), VC-1/WMV9 (vc1, vc1image, wmv3, wmv3image, and mss2,
+#     which decodes through vc1), AC-4 / TrueHD / MLP. AAC still plays: FFmpeg's aac_at decoder
+#     hands it to Apple's AudioToolbox (licensed by Apple), and with the software AAC decoders
+#     gone libavcodec picks it. AC-3, E-AC-3, MP3, MPEG-2 video, MPEG-4 Part 2 (DivX/Xvid) and
+#     WMV7/8 stay (expired or outside a pool). The AAC, DTS and TrueHD/MLP software encoders go
+#     too (the pools license encoders as well; Umbra never encodes through libVLC).
 #
 # Output: Vendor/VLCKit/VLCKit.xcframework, then:
 #   cd App && UMBRA_WITH_VLCKIT=YES xcodegen generate
@@ -110,12 +117,28 @@ rm -f "$DEINTERLACE/algo_yadif.c" "$DEINTERLACE/algo_yadif.h" "$DEINTERLACE/yadi
 ! grep -q yadif libvlc/vlc/modules/video_filter/Makefile.am && [[ -f "$DEINTERLACE/algo_x.c" ]] \
   || { echo "error: the deinterlace module still lists yadif (scripts/vlc-patches/0002 not applied?)" >&2; exit 1; }
 
-# 2. FFmpeg configuration: no GPL, no nonfree, no software decoders for patent-pool codecs.
-#    Make expands FFMPEGCONF when the recipe runs, so appending to the rules is enough.
+# 2. FFmpeg configuration: no GPL, no nonfree, no software decoders for patent-pool codecs
+#    (docs/COMPLIANCE.md §2; scripts/audit-gpl-symbols.sh fails the build on any of them, and
+#    requires aac_at, the AudioToolbox AAC decoder). Make expands FFMPEGCONF when the recipe runs,
+#    so appending to the rules is enough. A tree configured with another policy (an earlier
+#    version of this script) gets the current line instead, and its FFmpeg contribs are rebuilt:
+#    the contrib system does not rebuild a package when only its rules.mak changes.
+#    The software encoders of the same pools (aac, dca, truehd, mlp) go too: the patent licences
+#    cover encoders as well, and Umbra never encodes through libVLC (recording copies the stream;
+#    VLCMediaThumbnailer takes raw frames). AudioToolbox's aac_at encoder stays (Apple's licence).
+NO_FFMPEG_DECODERS="h264 hevc ac4 truehd mlp aac aac_fixed aac_latm dca vc1 vc1image wmv3 wmv3image mss2"
+NO_FFMPEG_ENCODERS="aac dca truehd mlp"
+FFMPEG_POLICY="FFMPEGCONF += --disable-gpl --disable-nonfree$(for d in $NO_FFMPEG_DECODERS; do printf ' --disable-decoder=%s' "$d"; done)$(for e in $NO_FFMPEG_ENCODERS; do printf ' --disable-encoder=%s' "$e"; done)"
 RULES="libvlc/vlc/contrib/src/ffmpeg/rules.mak"
-if ! grep -q "Umbra LGPL/patent policy" "$RULES"; then
-  printf '\n# Umbra LGPL/patent policy\nFFMPEGCONF += --disable-gpl --disable-nonfree --disable-decoder=h264 --disable-decoder=hevc --disable-decoder=ac4 --disable-decoder=truehd --disable-decoder=mlp\n' >> "$RULES"
+if ! grep -qxF -- "$FFMPEG_POLICY" "$RULES"; then
+  awk '/^# Umbra LGPL\/patent policy$/ {exit} {print}' "$RULES" > "$RULES.umbra" && mv "$RULES.umbra" "$RULES"
+  printf '\n# Umbra LGPL/patent policy\n%s\n' "$FFMPEG_POLICY" >> "$RULES"
+  for stamp in libvlc/vlc/contrib/*/.ffmpeg; do
+    if [[ -f "$stamp" ]]; then rm -rf "$stamp" "$(dirname "$stamp")/ffmpeg"; fi
+  done
 fi
+grep -qxF -- "$FFMPEG_POLICY" "$RULES" && [[ "$(grep -c '^# Umbra LGPL/patent policy$' "$RULES")" == 1 ]] \
+  || { echo "error: could not write the FFmpeg policy to $RULES" >&2; exit 1; }
 
 # macOS 27 ships a BSD /sbin/sha512sum that cannot check sums piped on stdin, which libvlc's
 # tool build does for every download. Its tools bin directory comes first on the build PATH,

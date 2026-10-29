@@ -6,8 +6,13 @@
 #     2.1): no liba52, libdca, faad2, libmad, libmpeg2, x262, x264, x265, libdvdcss, libdvdnav,
 #     libdvdread, libsamplerate, sidplay2, aribb24, vncclient, and no GnuTLS/Nettle/GMP (LGPLv3 or
 #     GPL), so libVLC has no TLS of its own: https goes through Media3 (see the README);
-#   * FFmpeg without --enable-gpl/--enable-nonfree and without libpostproc, and without its h264,
-#     hevc, ac4, truehd and mlp decoders (Android plays H.264/HEVC through MediaCodec via Media3);
+#   * FFmpeg without --enable-gpl/--enable-nonfree and without libpostproc, and without a software
+#     decoder for any codec whose patent pool still licenses (docs/COMPLIANCE.md §2; owner decision
+#     2026-10-29: no royalties): h264, hevc, ac4, truehd, mlp, aac, aac_fixed, aac_latm, dca (DTS),
+#     vc1, vc1image, wmv3, wmv3image and mss2 (VC-1/WMV9). Android decodes those through
+#     MediaCodec: Media3 first, and libVLC's own mediacodec module (its audio part turned on by
+#     LibVlcGuard.OPTIONS, "--mediacodec-audio"), so AAC still plays in libVLC; DTS and VC-1 play
+#     only where the phone has a decoder for them;
 #   * VLC's own GPL modules left out (lua, realrtsp, mono, dolby_surround_decoder,
 #     headphone_channel_mixer, rotate, stream_out_rtp/cycle, vod_rtsp, file_logger, syslog, the
 #     dummy interface and the ones upstream already drops), and the modules whose sources carry GPL
@@ -20,6 +25,9 @@
 #     tarball is only on GitHub, which the build host may not reach);
 #   * scripts/vlc-patches-android/*.patch applied (0001: never proxy a loopback URL; 0002: the
 #     deinterlace module without yadif);
+#   * libvlcjni without renderer discovery: RendererDiscoverer.java, its only GPL-headed source,
+#     is deleted with its JNI side, and scripts/libvlcjni-patches/0001 removes what referred to it
+#     (docs/COMPLIANCE.md §1.4; Umbra never casts);
 #   * audited at the end (scripts/audit-android-libvlc.sh, the licence header of every source file
 #     compiled into the linked modules and core (scripts/audit-libvlc-sources.py), the licence of
 #     every VLC module and FFmpeg's own licence string); any hit fails the build.
@@ -115,6 +123,41 @@ if [[ ! -f libvlcjni/buildsystem/compile-libvlc.sh ]]; then
   git -C libvlcjni checkout -q "$LIBVLCJNI_HASH"
 fi
 JNI="$WORK/libvlcjni"
+
+# 1a. libvlcjni without renderer discovery (docs/COMPLIANCE.md §1.4): RendererDiscoverer.java is
+#     the only libvlcjni source with a GPL header (GPL 2+; the rest is LGPL 2.1+ or has no header).
+#     Umbra never casts, so the class and its JNI side (libvlcjni-rendererdiscoverer.c, LGPL, used
+#     by nothing else) are deleted, and scripts/libvlcjni-patches/0001 removes what referred to
+#     them (JNI_OnLoad's class lookups, Android.mk, utils.h). Applied to the working tree like
+#     Umbra's VLC patches below; scripts/audit-android-libvlc.sh fails on the class, on a
+#     libvlcjni.so that still looks it up, and on any GPL-headed Java/Kotlin source.
+JNI_PATCHES=()
+for patch in "$ROOT"/scripts/libvlcjni-patches/*.patch; do
+  if [[ -f "$patch" ]]; then JNI_PATCHES+=("$patch"); fi
+done
+(( ${#JNI_PATCHES[@]} > 0 )) || die "no patches in scripts/libvlcjni-patches"
+jni_patches_current=1
+for patch in "${JNI_PATCHES[@]}"; do
+  (cd "$JNI" && git apply --reverse --check "$patch" >/dev/null 2>&1) || jni_patches_current=0
+done
+if (( jni_patches_current == 0 )); then
+  for patch in "${JNI_PATCHES[@]}"; do
+    (cd "$JNI" && git apply --numstat "$patch" | cut -f3 | while IFS= read -r file; do
+      git checkout -q HEAD -- "$file" || exit 1; done) \
+      || die "could not restore the libvlcjni files $(basename "$patch") touches"
+  done
+  for patch in "${JNI_PATCHES[@]}"; do
+    (cd "$JNI" && git apply "$patch") || die "could not apply $(basename "$patch") to libvlcjni"
+  done
+fi
+rm -f "$JNI/libvlc/src/org/videolan/libvlc/RendererDiscoverer.java" "$JNI/libvlc/jni/libvlcjni-rendererdiscoverer.c"
+jni_sources=(--include='*.java' --include='*.kt' --include='*.c' --include='*.h' --include='*.mk')
+! grep -rqI "${jni_sources[@]}" RendererDiscoverer "$JNI/libvlc/src" "$JNI/libvlc/jni" \
+  || die "libvlcjni still refers to RendererDiscoverer: $(grep -rlI "${jni_sources[@]}" RendererDiscoverer "$JNI/libvlc/src" "$JNI/libvlc/jni" | tr '\n' ' ')"
+# Every Java/Kotlin source that goes into the AAR: no GPL header (fails before hours of building).
+"$ROOT/scripts/audit-android-libvlc.sh" "$JNI/libvlc/src" > "$WORK/report/java-source-audit.txt" \
+  || { cat "$WORK/report/java-source-audit.txt" >&2; die "GPL Java/Kotlin source in libvlcjni (above)"; }
+
 VLC_HASH="$(sed -n 's/^VLC_TESTED_HASH=\([0-9a-f]*\)$/\1/p' "$JNI/buildsystem/get-vlc.sh")"
 VLC_URL="$(sed -n 's/^VLC_REPOSITORY=\(.*\)$/\1/p' "$JNI/buildsystem/get-vlc.sh")"
 [[ "$VLC_HASH" =~ ^[0-9a-f]{40}$ && -n "$VLC_URL" ]] || die "could not read VLC_TESTED_HASH from libvlcjni/buildsystem/get-vlc.sh"
@@ -161,11 +204,28 @@ rm -f "$DEINTERLACE/algo_yadif.c" "$DEINTERLACE/algo_yadif.h" "$DEINTERLACE/yadi
 echo "vlc-android $VLC_ANDROID_TAG, libvlcjni $LIBVLCJNI_HASH, vlc $VLC_HASH" > "$WORK/report/sources.txt"
 
 # 2. FFmpeg policy (as scripts/build-vlckit.sh): make expands FFMPEGCONF when the recipe runs,
-#    so appending to the rules is enough. --disable-gpl also leaves libpostproc out.
+#    so appending to the rules is enough. --disable-gpl also leaves libpostproc out. A tree
+#    configured with another policy (an earlier version of this script) gets the current line
+#    instead, and its FFmpeg contribs are rebuilt (the contrib system does not rebuild a package
+#    when only its rules.mak changes; KEEP_BUILD_TREES=0 deletes them after each ABI anyway).
+#    The V4L2 mem2mem wrappers for H.264, HEVC and VC-1 go too: no Android app can open a V4L2
+#    device, and the release audit refuses them like the decoders. So do the software encoders of
+#    the same pools (aac, dca, truehd, mlp): the patent licences cover encoders as well, and Umbra
+#    never encodes through libVLC (recording copies the stream; thumbnails are raw frames).
+NO_FFMPEG_DECODERS="h264 hevc ac4 truehd mlp aac aac_fixed aac_latm dca vc1 vc1image wmv3 wmv3image mss2 h264_v4l2m2m hevc_v4l2m2m vc1_v4l2m2m"
+NO_FFMPEG_ENCODERS="aac dca truehd mlp"
+FFMPEG_POLICY="FFMPEGCONF += --disable-gpl --disable-nonfree --disable-postproc$(for d in $NO_FFMPEG_DECODERS; do printf ' --disable-decoder=%s' "$d"; done)$(for e in $NO_FFMPEG_ENCODERS; do printf ' --disable-encoder=%s' "$e"; done)"
 RULES="$VLC/contrib/src/ffmpeg/rules.mak"
-if ! grep -q "Umbra LGPL/patent policy" "$RULES"; then
-  printf '\n# Umbra LGPL/patent policy\nFFMPEGCONF += --disable-gpl --disable-nonfree --disable-postproc --disable-decoder=h264 --disable-decoder=hevc --disable-decoder=ac4 --disable-decoder=truehd --disable-decoder=mlp\n' >> "$RULES"
+if ! grep -qxF -- "$FFMPEG_POLICY" "$RULES"; then
+  awk '/^# Umbra LGPL\/patent policy$/ {exit} {print}' "$RULES" > "$RULES.umbra" && mv "$RULES.umbra" "$RULES"
+  printf '\n# Umbra LGPL/patent policy\n%s\n' "$FFMPEG_POLICY" >> "$RULES"
+  for stamp in "$VLC"/contrib/*/.ffmpeg; do
+    if [[ -f "$stamp" ]]; then rm -rf "$stamp" "$(dirname "$stamp")/ffmpeg"; fi
+  done
 fi
+grep -qxF -- "$FFMPEG_POLICY" "$RULES" && [[ "$(grep -c '^# Umbra LGPL/patent policy$' "$RULES")" == 1 ]] \
+  || die "could not write the FFmpeg policy to $RULES"
+NO_FFMPEG_DECODERS_RE="^($(echo "$NO_FFMPEG_DECODERS" | tr ' ' '|'))$"
 
 # 3. A copy of libvlcjni's compile-libvlc.sh, adapted (build configuration only):
 #      * no -g (debug info would take several GB; ndk-build strips the shipped .so anyway);
@@ -296,7 +356,7 @@ triplet_of() {
 # What an ABI was built with: this script and the patches. A staged ABI built with anything else
 # is rebuilt, so a change here (a module left out, a contrib disabled) always reaches the AAR.
 sha256() { if command -v sha256sum >/dev/null; then sha256sum; else shasum -a 256; fi; }
-CONFIG_ID="$(cat "$ROOT/scripts/build-libvlc-android.sh" "$ROOT"/scripts/vlc-patches-android/*.patch | sha256 | cut -c1-64)"
+CONFIG_ID="$(cat "$ROOT/scripts/build-libvlc-android.sh" "$ROOT"/scripts/vlc-patches-android/*.patch "$ROOT"/scripts/libvlcjni-patches/*.patch | sha256 | cut -c1-64)"
 
 # 4. Per ABI: build, check, stage.
 build_abi() {
@@ -360,9 +420,13 @@ build_abi() {
   "$nm" --defined-only "$contrib/lib/libavcodec.a" 2>/dev/null | awk '$2 ~ /^[DdRr]$/ {print $3}' \
     | sed -n 's/^ff_\(.*\)_decoder$/\1/p' | sort -u > "$WORK/report/$abi-ffmpeg-decoders.txt"
   [[ -s "$WORK/report/$abi-ffmpeg-decoders.txt" ]] || die "could not list FFmpeg's decoders"
-  if grep -qxE 'h264|hevc|ac4|truehd|mlp' "$WORK/report/$abi-ffmpeg-decoders.txt"; then
-    die "FFmpeg was built with a decoder it must not have: $(grep -xE 'h264|hevc|ac4|truehd|mlp' "$WORK/report/$abi-ffmpeg-decoders.txt" | tr '\n' ' ')"
+  if grep -qE "$NO_FFMPEG_DECODERS_RE" "$WORK/report/$abi-ffmpeg-decoders.txt"; then
+    die "FFmpeg was built with a decoder it must not have: $(grep -E "$NO_FFMPEG_DECODERS_RE" "$WORK/report/$abi-ffmpeg-decoders.txt" | tr '\n' ' ')"
   fi
+  # The decoders that stay (expired pools or none): AC-3/E-AC-3, MPEG-2, MPEG-4 Part 2, MP3, WMV7/8.
+  for d in ac3 eac3 mpeg2video mpeg4 mp3 wmv1 wmv2 msmpeg4v3; do
+    grep -qx "$d" "$WORK/report/$abi-ffmpeg-decoders.txt" || die "FFmpeg was built without its $d decoder"
+  done
   [[ ! -e "$contrib/lib/libpostproc.a" ]] || die "libpostproc was built"
 
   # The release gate the app runs, on the stripped libraries.

@@ -17,8 +17,9 @@ Umbra's own code is not open source; only the files here are published.
 
 Every build is configured without GPL parts: no `--enable-gpl`/`--enable-nonfree` FFmpeg, no
 GPL-only contribs or VLC modules. FFmpeg's software decoders for codecs whose patent pools still
-license are left out too; the exact list is the `--disable-decoder=…` options in each script's
-FFmpeg configuration step. Those formats play only through the operating system's own decoders,
+license are left out too, with the software encoders of those pools; the exact lists are the
+`--disable-decoder=…` and `--disable-encoder=…` options in each script's FFmpeg configuration
+step. Those formats play only through the operating system's own decoders,
 where the device has one. The scripts pin the exact upstream commits.
 
 ## Files
@@ -33,6 +34,10 @@ where the device has one. The scripts pin the exact upstream commits.
   - scripts/vlc-patches/0002-deinterlace-without-yadif.patch
   - scripts/vlc-patches-android/0001-android-never-proxy-loopback.patch
   - scripts/vlc-patches-android/0002-deinterlace-without-yadif.patch
+- The patch Umbra applies to libvlcjni (Android's Java binding): renderer discovery is left out
+  (`build-libvlc-android.sh` deletes `RendererDiscoverer.java` and
+  `libvlcjni-rendererdiscoverer.c`; the patch removes what referred to them):
+  - scripts/libvlcjni-patches/0001-no-renderer-discoverer.patch
 - Licence audits the builds run: `scripts/audit-libvlc-sources.py` (licence header of every source
   file compiled into libVLC), `scripts/audit-gpl-symbols.sh` (Apple frameworks and apps) and
   `scripts/audit-android-libvlc.sh` (Android libraries, APK, AAB and AAR).
