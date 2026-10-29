@@ -1,0 +1,77 @@
+diff --git a/src/darwin/netconf.c b/src/darwin/netconf.c
+index 6ab9044319..d1427bd89f 100644
+--- a/src/darwin/netconf.c
++++ b/src/darwin/netconf.c
+@@ -27,6 +27,9 @@
+ 
+ #include <vlc_common.h>
+ #include <vlc_network.h>
++#include <vlc_url.h>
++
++#include <string.h>
+ 
+ #include <CoreFoundation/CoreFoundation.h>
+ 
+@@ -37,15 +40,60 @@
+ #include <CoreServices/CoreServices.h>
+ #endif
+ 
++/* Umbra: never proxy a loopback URL. The system HTTP proxy is returned below
++ * without looking at its exceptions list, and the app streams private content
++ * to libVLC over 127.0.0.1 with a capability URL and a secret user agent.
++ * Loopback means exactly: "localhost" (any case), "::1" (also in brackets), or
++ * a dotted-quad IPv4 literal in 127.0.0.0/8: four parts of one to three decimal
++ * digits, each 0-255, no leading zero, nothing after the fourth. Any other host
++ * ("127.example.com", "127.1", "127.0.0.1.example", "0177.0.0.1") is proxied. */
++static bool vlc_host_is_ipv4_loopback(const char *host)
++{
++    if (strncmp(host, "127.", 4) != 0)
++        return false;
++    host += 4;
++    for (int part = 0; part < 3; part++)
++    {
++        unsigned value = 0, digits = 0;
++        while (*host >= '0' && *host <= '9')
++        {
++            if (digits == 3 || (digits == 1 && value == 0))
++                return false; /* four digits, or a leading zero */
++            value = value * 10 + (unsigned)(*host++ - '0');
++            digits++;
++        }
++        if (digits == 0 || value > 255 || *host != (part < 2 ? '.' : '\0'))
++            return false;
++        host++;
++    }
++    return true;
++}
++
++static bool vlc_url_is_loopback(const char *url)
++{
++    if (url == NULL)
++        return false;
++    vlc_url_t parsed; /* vlc_UrlParse initialises it, also on error */
++    bool loopback = false;
++    if (vlc_UrlParse(&parsed, url) == 0 && parsed.psz_host != NULL)
++        loopback = !strcasecmp(parsed.psz_host, "localhost")
++                || !strcmp(parsed.psz_host, "::1")
++                || !strcmp(parsed.psz_host, "[::1]")
++                || vlc_host_is_ipv4_loopback(parsed.psz_host);
++    vlc_UrlClean(&parsed);
++    return loopback;
++}
++
+ /**
+  * Determines the network proxy server to use (if any).
+- * @param url absolute URL for which to get the proxy server (not used)
++ * @param url absolute URL for which to get the proxy server (none for loopback)
+  * @return proxy URL, NULL if no proxy or error
+  */
+ char *vlc_getProxyUrl(const char *url)
+ {
+-    VLC_UNUSED(url);
+     char *proxy_url = NULL;
++    if (vlc_url_is_loopback(url))
++        return NULL;
+     CFDictionaryRef dicRef = CFNetworkCopySystemProxySettings();
+     if (NULL != dicRef) {
+         const CFStringRef proxyCFstr = (const CFStringRef)CFDictionaryGetValue(

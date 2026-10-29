@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="description" content="Umbra's privacy policy: no account, no analytics, no tracking. Your videos and your vault stay on your devices.">
+<title>Umbra Privacy Policy</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="site">
+  <a class="name" href="./">Umbra</a>
+  <nav>
+    <a href="privacy.html" aria-current="page">Privacy</a>
+    <a href="terms.html">Terms</a>
+    <a href="./#support">Support</a>
+  </nav>
+</header>
+
+<main>
+  <h1>Privacy Policy</h1>
+  <p class="updated">Last updated: 29 October 2026. Applies to Umbra for Mac, iPhone, iPad and Android, and to this website.</p>
+
+  <div class="note">
+    <p><strong>The short version.</strong> Umbra has no account and no server of ours that your data goes to. It
+    contains no analytics, no advertising and no tracking code. Your videos, your vault and your settings stay
+    on your devices. We cannot see what you watch, what is in your vault or your password, and we cannot open
+    your vault. Umbra uses the internet only when you ask it to, for example to play a stream you opened or to
+    reach a media server you added.</p>
+  </div>
+
+  <p>In this policy, "Umbra" is the app, and "we" or "us" is the independent developer who makes it. You can
+  reach us through the public issue tracker at <a href="https://github.com/MHasnainJafri/umbra/issues">github.com/MHasnainJafri/umbra/issues</a>.</p>
+
+  <h2>1. What we collect</h2>
+  <p>Nothing. We do not collect, receive, store, sell or share personal data through the app. Umbra has:</p>
+  <ul>
+    <li>no sign-up, login or user account with us;</li>
+    <li>no analytics, crash-reporting, advertising or tracking software from us or anyone else;</li>
+    <li>no advertising identifier use and no tracking across apps or websites;</li>
+    <li>no server of ours that the app sends your files, your viewing history or anything else to.</li>
+  </ul>
+  <p>The only time we receive anything about you is when you choose to email us (section 9), or when Apple or
+  Google pass on crash reports you agreed to share (section 7).</p>
+
+  <h2>2. What stays on your device</h2>
+  <p>Umbra keeps the following on the device it runs on. It is never sent to us.</p>
+  <ul>
+    <li><strong>Your library:</strong> the list of videos Umbra found or you opened, where you stopped watching,
+    your track and subtitle choices, thumbnails and your settings. The "Continue Watching" widget shows library
+    videos only, never vault items.</li>
+    <li><strong>Your private vault:</strong> the videos and photos you move into it, with their names, folders,
+    tags, thumbnails and playback positions. All of it is encrypted on your device with AES-256-GCM under a
+    key derived from your password (Argon2id) and, depending on your device and settings, a key kept in its
+    secure hardware or keychain (Secure Enclave and Keychain on Apple devices, Android Keystore on Android).
+    Vault videos are decrypted only in memory while you watch them. Your password is never stored in plain
+    form and never leaves the device.</li>
+    <li><strong>Face ID, Touch ID, fingerprint or face unlock:</strong> if you turn this on, your device's
+    operating system checks your biometrics and only tells Umbra whether the check passed. Umbra never sees or
+    stores biometric data.</li>
+    <li><strong>Recovery kit:</strong> if you create one, it is yours to keep. We do not have a copy.</li>
+    <li><strong>Intruder Audit (Mac, optional, off by default):</strong> if you turn it on, Umbra takes one
+    photo with the Mac's camera after repeated wrong vault passwords. The photo is encrypted inside your vault
+    and goes nowhere else.</li>
+  </ul>
+  <p>Because nothing of this reaches us, deleting it is in your hands: erase the vault in Umbra's settings, or
+  delete the app (on a Mac, also its data in your Library folder). We cannot recover a vault for you: if you
+  lose both your password and your recovery kit, the vault cannot be opened by anyone.</p>
+
+  <h2>3. Permissions Umbra asks for, and why</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Permission</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td>Photos (iPhone, iPad, Mac) / videos on the device (Android)</td><td>To show and play your videos, and to move the photos and videos you choose into the vault. If you ask, Umbra can remove the originals after moving them.</td></tr>
+      <tr><td>Camera (Mac)</td><td>Only for Intruder Audit, and only once you turn it on.</td></tr>
+      <tr><td>Camera (iPhone, iPad)</td><td>Only to scan the pairing code another of your devices shows when you set up Vault Sync. Nothing is recorded or stored.</td></tr>
+      <tr><td>Local network</td><td>To find media servers on your network, for Wi-Fi Transfer and for Vault Sync between your own devices.</td></tr>
+      <tr><td>Face ID, Touch ID, fingerprint</td><td>To unlock the vault, if you turn this on.</td></tr>
+      <tr><td>Internet (Android)</td><td>For the network features in section 4, and for the private stream inside your own device that plays vault videos.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h2>4. When Umbra uses the network</h2>
+  <p>Umbra only connects to other computers when you use a feature that needs it. In each case it talks
+  directly to the server or device you chose, never through us.</p>
+  <ul>
+    <li><strong>Streams and links you open.</strong> When you play or record a web address, Umbra connects to that
+    server. Like any app or browser, that server can see your IP address and the request. Recordings are saved on
+    your device, and recordings into the vault are encrypted.</li>
+    <li><strong>Media servers you add.</strong> Umbra can find DLNA/UPnP media servers on your local network and
+    play from them. If you add a Jellyfin or Emby server, you sign in to that server; Umbra keeps the access
+    token the server gives it in your device's protected storage (Keychain or Android Keystore) and can tell
+    your server what you are playing and where you stopped, as those servers expect. That information goes
+    only to your server.</li>
+    <li><strong>Find Subtitles (Mac, optional).</strong> This works only after you enter your own
+    OpenSubtitles.com API key. When you search, Umbra sends OpenSubtitles.com a fingerprint of the video file,
+    a search phrase made from its file name, your preferred languages and your key, and downloads the subtitle
+    you pick. It never looks up vault videos. OpenSubtitles.com's own privacy policy applies to what they
+    receive.</li>
+    <li><strong>Wi-Fi Transfer (optional, off until you start it).</strong> Umbra opens a temporary, encrypted
+    (HTTPS) page on your local network so a computer on the same network can send files into your vault, after
+    you enter the one-time code Umbra shows. It stops when you stop it or the vault locks.</li>
+    <li><strong>Vault Sync (Mac, iPhone and iPad, optional).</strong> Keeps your vault the same on your own
+    paired devices. They connect directly to each other on the same local network, end-to-end encrypted. There
+    is no cloud server and no relay; we never receive anything.</li>
+    <li><strong>AirPlay and Picture in Picture (Apple devices).</strong> Handled by Apple's system. Umbra never
+    sends vault videos to AirPlay.</li>
+    <li><strong>iCloud Photos (Apple devices).</strong> If a video you play or move into the vault is kept in
+    iCloud Photos, Apple's Photos system downloads it from your iCloud account. That is between your device and
+    Apple; nothing goes to us.</li>
+    <li><strong>Links you tap,</strong> such as this policy or open-source pages, open in your web browser.</li>
+  </ul>
+
+  <h2>5. Purchases</h2>
+  <p>On Mac, iPhone and iPad, Umbra Pro is sold through Apple's App Store. Apple handles the payment and your
+  payment details. Umbra only learns from Apple's StoreKit whether you own Pro (which product, and until when a
+  subscription runs) so it can turn on Pro features. That check happens on your device; Umbra does not send
+  your purchase information to us or anyone else. Apple's privacy policy applies to the purchase itself.</p>
+  <p>The Android version currently has no purchases. If that changes, payments will be handled by Google Play
+  in the same way, and we will update this policy first.</p>
+
+  <h2>6. Backups</h2>
+  <ul>
+    <li>On iPhone and iPad, the vault is excluded from iCloud and device backups.</li>
+    <li>On Android, nothing of Umbra's is backed up or copied to a new phone: the vault, your settings and
+    your library information are all excluded from cloud backup and device-to-device transfer.</li>
+    <li>On a Mac you choose in Umbra's settings whether the vault folder is included in Time Machine and other
+    backups. It is encrypted either way.</li>
+    <li>A vault backup you make in Umbra goes to the place you pick, and stays encrypted.</li>
+    <li>On Mac, iPhone and iPad, library information outside the vault follows your device's normal backup
+    settings.</li>
+  </ul>
+
+  <h2>7. Crash reports and diagnostics</h2>
+  <p>Umbra contains no crash-reporting software. If you have agreed in your device settings to share analytics
+  or diagnostics with app developers (on Apple devices: Settings, Privacy &amp; Security, Analytics &amp;
+  Improvements; on Android: usage and diagnostics), Apple or Google may send us crash reports and app
+  performance statistics. They do not identify you to us, and they never contain your videos, your vault or
+  your password. We use them only to fix problems. You can turn this sharing off at any time in the same
+  settings.</p>
+
+  <h2>8. Children</h2>
+  <p>Umbra is not directed at children under 13, and it collects no personal data from anyone, including
+  children.</p>
+
+  <h2>9. If you contact us</h2>
+  <p>We are contacted through GitHub issues (<a href="https://github.com/MHasnainJafri/umbra/issues">github.com/MHasnainJafri/umbra/issues</a>). An issue
+  and your GitHub user name are public and are handled by GitHub under its own privacy statement; we use what
+  you write only to reply to you, and delete an issue when you ask. Do not post personal data in an issue. Never send us your vault password or recovery kit; we will never ask
+  for them.</p>
+
+  <h2>10. Your rights</h2>
+  <p>Data protection laws such as the GDPR (European Union and United Kingdom) and the CCPA (California) give
+  you rights to access, correct, delete or move personal data about you, and to object to its use. Because
+  Umbra does not send your data to us, we hold none about you apart from emails you sent us, which you can ask
+  us to show you or delete at any time. We do not sell or share personal data, so there is nothing to opt out
+  of. You can also complain to your local data protection authority.</p>
+
+  <h2>11. This website</h2>
+  <p>These pages are hosted by GitHub Pages. They use no cookies, no analytics and no scripts, and load
+  nothing from other websites. GitHub, which runs the hosting, may record visitors' IP addresses for security
+  and operation of its service, as described in the
+  <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub General Privacy Statement</a>.</p>
+
+  <h2>12. Changes to this policy</h2>
+  <p>If Umbra starts handling data differently, we will update this page before the change reaches the app,
+  and change the date at the top. The app always links to the current version.</p>
+
+  <h2>13. Contact</h2>
+  <p>Questions about privacy: <a href="https://github.com/MHasnainJafri/umbra/issues">github.com/MHasnainJafri/umbra/issues</a>.</p>
+</main>
+
+<footer class="site">
+  <span>Umbra</span>
+  <nav>
+    <a href="./">Home</a>
+    <a href="terms.html">Terms of Use</a>
+    <a href="https://github.com/MHasnainJafri/umbra/issues">Contact</a>
+  </nav>
+</footer>
+</body>
+</html>

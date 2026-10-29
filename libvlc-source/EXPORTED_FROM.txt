@@ -1,0 +1,2 @@
+Exported by scripts/export-libvlc-source.sh from Umbra commit 1bd37fa82fbe0db9edbba062e31ba296bbd497ae
+on 2026-10-29T17:24:55Z.

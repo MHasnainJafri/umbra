@@ -1,0 +1,117 @@
+Umbra: the deinterlace module without yadif (GPL).
+
+modules/video_filter/deinterlace/yadif.h and yadif_template.h carry FFmpeg's
+old GPL-2.0-or-later header (Michael Niedermayer, 2006), and algo_yadif.c
+includes them, so a libVLC that links this module links GPL code, although the
+module itself declares no licence. Every other file of the module (deinterlace.c,
+common.c, helpers.c, merge.c, merge_arm*.S, mmx.h, algo_basic.c, algo_x.c,
+algo_phosphor.c, algo_ivtc.c and their headers) is LGPL-2.1-or-later.
+
+This patch leaves yadif and yadif2x out of the module so that it is LGPL only:
+  * the four yadif files are no longer built (the build script also deletes them);
+  * the modes are no longer offered, in the module or in the core's list;
+  * a request for "yadif" (from settings or the libvlc API, which still accepts
+    the name) selects "x", and "yadif2x" selects "linear", the LGPL algorithms
+    closest at the same output frame rate;
+  * an unknown mode falls back to "x" (it used to leave the renderer unset).
+"auto", the default, has always meant "x" in VLC 3.0, so default playback is
+unchanged. The same patch applies to VLC 3.0.21 + VLCKit 3.6.0's patches
+(scripts/vlc-patches) and to the VLC 3.0.x commit libvlcjni pins for libVLC
+3.6.5 (scripts/vlc-patches-android): the four files are identical in both.
+
+diff --git a/modules/video_filter/Makefile.am b/modules/video_filter/Makefile.am
+index f65344d486..c1d8d08e39 100644
+--- a/modules/video_filter/Makefile.am
++++ b/modules/video_filter/Makefile.am
+@@ -131,8 +131,6 @@ libdeinterlace_plugin_la_SOURCES = \
+ 	video_filter/deinterlace/helpers.c video_filter/deinterlace/helpers.h \
+ 	video_filter/deinterlace/algo_basic.c video_filter/deinterlace/algo_basic.h \
+ 	video_filter/deinterlace/algo_x.c video_filter/deinterlace/algo_x.h \
+-	video_filter/deinterlace/algo_yadif.c video_filter/deinterlace/algo_yadif.h \
+-	video_filter/deinterlace/yadif.h video_filter/deinterlace/yadif_template.h \
+ 	video_filter/deinterlace/algo_phosphor.c video_filter/deinterlace/algo_phosphor.h \
+ 	video_filter/deinterlace/algo_ivtc.c video_filter/deinterlace/algo_ivtc.h
+ # inline ASM doesn't build with -O0
+diff --git a/modules/video_filter/deinterlace/deinterlace.c b/modules/video_filter/deinterlace/deinterlace.c
+index 9f9d5291ff..24d9a0a5f0 100644
+--- a/modules/video_filter/deinterlace/deinterlace.c
++++ b/modules/video_filter/deinterlace/deinterlace.c
+@@ -362,10 +362,6 @@ static struct filter_mode_t filter_mode [] = {
+                  { false, false, false, true }, true, true },
+     { "blend", .pf_render_single_pic = RenderBlend,
+                  { false, false, false, false }, true, true },
+-    { "yadif", .pf_render_single_pic = RenderYadifSingle,
+-                 { false, true, false, false }, false, true },
+-    { "yadif2x", .pf_render_ordered = RenderYadif,
+-                 { true, true, false, false }, false, true },
+     { "x", .pf_render_single_pic = RenderX,
+                  { false, false, false, false }, false, false },
+     { "phosphor", .pf_render_ordered = RenderPhosphor,
+@@ -389,6 +385,13 @@ static void SetFilterMethod( filter_t *p_filter, const char *mode, bool pack )
+ 
+     if ( mode == NULL || !strcmp( mode, "auto" ) )
+         mode = "x";
++    /* Umbra: yadif (GPL) is not built. Its names, which settings and the
++     * libvlc API may still carry, select the closest LGPL algorithm at the
++     * same frame rate. */
++    else if ( !strcmp( mode, "yadif" ) )
++        mode = "x";
++    else if ( !strcmp( mode, "yadif2x" ) )
++        mode = "linear";
+ 
+     for ( size_t i = 0; i < ARRAY_SIZE(filter_mode); i++ )
+     {
+@@ -417,6 +420,7 @@ static void SetFilterMethod( filter_t *p_filter, const char *mode, bool pack )
+     }
+ 
+     msg_Err( p_filter, "unknown deinterlace mode \"%s\"", mode );
++    SetFilterMethod( p_filter, "x", pack );
+ }
+ 
+ /**
+diff --git a/modules/video_filter/deinterlace/deinterlace.h b/modules/video_filter/deinterlace/deinterlace.h
+index 355f2f4882..e79629bb97 100644
+--- a/modules/video_filter/deinterlace/deinterlace.h
++++ b/modules/video_filter/deinterlace/deinterlace.h
+@@ -39,7 +39,6 @@ struct vlc_object_t;
+ /* Local algorithm headers */
+ #include "algo_basic.h"
+ #include "algo_x.h"
+-#include "algo_yadif.h"
+ #include "algo_phosphor.h"
+ #include "algo_ivtc.h"
+ #include "common.h"
+@@ -51,12 +50,12 @@ struct vlc_object_t;
+ /** Available deinterlace modes. */
+ static const char *const mode_list[] = {
+     "discard", "blend", "mean", "bob", "linear", "x",
+-    "yadif", "yadif2x", "phosphor", "ivtc" };
++    "phosphor", "ivtc" };
+ 
+ /** User labels for the available deinterlace modes. */
+ static const char *const mode_list_text[] = {
+     N_("Discard"), N_("Blend"), N_("Mean"), N_("Bob"), N_("Linear"), "X",
+-    "Yadif", "Yadif (2x)", N_("Phosphor"), N_("Film NTSC (IVTC)") };
++    N_("Phosphor"), N_("Film NTSC (IVTC)") };
+ 
+ /*****************************************************************************
+  * Data structures
+diff --git a/src/libvlc-module.c b/src/libvlc-module.c
+index 56342523f3..c2d4026e38 100644
+--- a/src/libvlc-module.c
++++ b/src/libvlc-module.c
+@@ -354,12 +354,12 @@ static const char * const  ppsz_deinterlace_text[] = {
+     "Deinterlace method to use for video processing.")
+ static const char * const ppsz_deinterlace_mode[] = {
+     "auto", "discard", "blend", "mean", "bob",
+-    "linear", "x", "yadif", "yadif2x", "phosphor",
++    "linear", "x", "phosphor",
+     "ivtc"
+ };
+ static const char * const ppsz_deinterlace_mode_text[] = {
+     N_("Auto"), N_("Discard"), N_("Blend"), N_("Mean"), N_("Bob"),
+-    N_("Linear"), "X", "Yadif", "Yadif (2x)", N_("Phosphor"),
++    N_("Linear"), "X", N_("Phosphor"),
+     N_("Film NTSC (IVTC)")
+ };
+ 
